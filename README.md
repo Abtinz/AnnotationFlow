@@ -35,7 +35,7 @@ Raw images
 │   ├── tests/
 │   ├── Dockerfile
 │   └── requirements.txt
-├── mobile/
+├── frontend/
 │   ├── App.tsx
 │   ├── package.json
 │   └── Dockerfile
@@ -78,7 +78,7 @@ GET  /jobs/{job_id}/logs
 GET  /jobs/{job_id}/dataset
 ```
 
-`POST /jobs` accepts multiple image files, creates a processing job, and returns a `job_id`. The React Native page polls the job and log endpoints until processing is complete.
+`POST /jobs` accepts multiple image files, creates a processing job, and returns a `job_id`. The frontend polls the job and log endpoints until processing is complete.
 
 ## YOLO Object-Detection Format
 
@@ -149,18 +149,18 @@ cd backend
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Install mobile dependencies:
+Install frontend dependencies:
 
 ```bash
-cd mobile
+cd frontend
 npm install
 ```
 
-Run the mobile app in Expo:
+Run the frontend app with Vite:
 
 ```bash
-cd mobile
-npm run start
+cd frontend
+npm run dev
 ```
 
 ## Docker
@@ -171,7 +171,7 @@ After creating `.env`, start the stack:
 docker compose up --build
 ```
 
-The backend listens on `http://localhost:8000`. The Expo web/dev server listens on `http://localhost:8081`.
+The backend listens on `http://localhost:8000`. The frontend dev server listens on `http://localhost:8081`.
 
 ## Runtime Output
 
@@ -197,4 +197,3 @@ output/jobs/<job_id>/
 ```
 
 `output/`, `uploads/`, `.env`, and sample local image folders are ignored by git.
-

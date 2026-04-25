@@ -5,7 +5,8 @@ WORKDIR /app
 COPY package.json /app/package.json
 RUN npm install
 
-COPY App.tsx /app/App.tsx
+COPY index.html /app/index.html
+COPY src /app/src
 
 EXPOSE 8081
 

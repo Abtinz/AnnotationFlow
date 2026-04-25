@@ -11,13 +11,12 @@ services:
       - ./uploads:/app/uploads
       - ./output:/app/output
 
-  mobile:
+  frontend:
     build:
-      context: ./mobile
+      context: ./frontend
     environment:
       EXPO_PUBLIC_API_BASE_URL: http://localhost:8000
     ports:
       - "8081:8081"
     depends_on:
       - backend
-
