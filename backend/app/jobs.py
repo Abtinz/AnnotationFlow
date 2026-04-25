@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Protocol
 
+from PIL import Image
+
 from app.dataset_splitter import DatasetItem, write_split_dataset
 from app.duplicate_detector import file_sha256
 from app.image_normalizer import normalize_to_jpg
@@ -65,7 +67,7 @@ def _first_result(workflow_result: Any) -> dict[str, Any]:
 
 def _detections_from_result(result: dict[str, Any]) -> tuple[dict[str, int], list[dict[str, Any]]]:
     """Extract image metadata and prediction rows from a Roboflow result."""
-    detections = result.get("detections", {})
+    detections = result.get("detections") or result.get("predictions") or {}
     if not isinstance(detections, dict):
         return {"width": 0, "height": 0}, []
 
@@ -75,9 +77,18 @@ def _detections_from_result(result: dict[str, Any]) -> tuple[dict[str, int], lis
         return {"width": 0, "height": 0}, []
 
     return (
-        {"width": int(image.get("width", 0)), "height": int(image.get("height", 0))},
+        {"width": int(image.get("width") or 0), "height": int(image.get("height") or 0)},
         [prediction for prediction in predictions if isinstance(prediction, dict)],
     )
+
+
+def _fill_missing_image_size(image_meta: dict[str, int], image_path: Path) -> dict[str, int]:
+    """Use the normalized image dimensions when workflow metadata is incomplete."""
+    if image_meta["width"] > 0 and image_meta["height"] > 0:
+        return image_meta
+    with Image.open(image_path) as image:
+        width, height = image.size
+    return {"width": width, "height": height}
 
 
 def _remap_predictions(
@@ -116,6 +127,8 @@ def process_image_paths(
 
     seen_digests: set[str] = set()
     duplicate_count = 0
+    failed_count = 0
+    skipped_count = 0
     dataset_items: list[DatasetItem] = []
     class_to_yolo_id: dict[str, int] = {}
     class_names: list[str] = []
@@ -136,7 +149,22 @@ def process_image_paths(
         normalize_to_jpg(original_path, normalized_path)
         _log(job_dir, "Normalized image to JPG", image=normalized_path.name)
 
-        workflow_result = roboflow_client.run_image(normalized_path)
+        try:
+            workflow_result = roboflow_client.run_image(normalized_path)
+        except Exception as error:
+            failed_count += 1
+            _append_jsonl(
+                raw_results_path,
+                {"image": normalized_path.name, "error": str(error), "error_type": type(error).__name__},
+            )
+            _log(
+                job_dir,
+                "Roboflow workflow failed",
+                image=normalized_path.name,
+                level="error",
+                error=str(error),
+            )
+            continue
         _append_jsonl(raw_results_path, {"image": normalized_path.name, "result": workflow_result})
 
         result = _first_result(workflow_result)
@@ -150,8 +178,10 @@ def process_image_paths(
 
         image_meta, predictions = _detections_from_result(result)
         if not predictions and not config.include_empty_labels:
+            skipped_count += 1
             _log(job_dir, "Skipped image with no detections", image=normalized_path.name, level="warning")
             continue
+        image_meta = _fill_missing_image_size(image_meta, normalized_path)
 
         remapped_predictions = _remap_predictions(predictions, class_to_yolo_id, class_names)
         label_path = labels_dir / f"{normalized_path.stem}.txt"
@@ -181,6 +211,8 @@ def process_image_paths(
         "input_images": len(image_paths),
         "processed_images": len(dataset_items),
         "duplicate_images": duplicate_count,
+        "failed_images": failed_count,
+        "skipped_images": skipped_count,
         "classes": class_names,
         "train_count": len(dataset_split.train),
         "valid_count": len(dataset_split.valid),

@@ -5,6 +5,8 @@ import "./styles.css";
 type JobSummary = {
   processed_images?: number;
   duplicate_images?: number;
+  failed_images?: number;
+  skipped_images?: number;
   classes?: string[];
   train_count?: number;
   valid_count?: number;
@@ -138,6 +140,8 @@ function App() {
           <div className="stats">
             <Stat label="processed" value={summary?.processed_images ?? 0} />
             <Stat label="duplicates" value={summary?.duplicate_images ?? 0} />
+            <Stat label="failed" value={summary?.failed_images ?? 0} />
+            <Stat label="skipped" value={summary?.skipped_images ?? 0} />
             <Stat label="train" value={summary?.train_count ?? 0} />
             <Stat label="valid" value={summary?.valid_count ?? 0} />
           </div>
@@ -179,4 +183,3 @@ function Stat({ label, value }: { label: string; value: number }) {
 }
 
 createRoot(document.getElementById("root")!).render(<App />);
-

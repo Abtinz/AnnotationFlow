@@ -34,12 +34,19 @@ Raw images
 │   │   └── dataset_splitter.py
 │   ├── tests/
 │   ├── Dockerfile
+│   ├── pyproject.toml
+│   ├── setup.sh
+│   ├── run.sh
 │   └── requirements.txt
 ├── frontend/
-│   ├── App.tsx
+│   ├── src/
+│   ├── index.html
 │   ├── package.json
+│   ├── setup.sh
+│   ├── run.sh
 │   └── Dockerfile
-├── docker-compose.yml
+├── setup.sh
+├── run.sh
 ├── .env.example
 ├── .gitignore
 ├── LICENSE
@@ -126,52 +133,56 @@ names: ['bus']
 
 ## Local Development
 
-Install backend dependencies:
+The simple path is:
+
+```bash
+./setup.sh
+./run.sh
+```
+
+Then open:
+
+```text
+Frontend: http://127.0.0.1:8081
+Backend:  http://127.0.0.1:8000
+```
+
+`setup.sh` installs both systems:
+
+- `backend/setup.sh` runs `uv sync`
+- `frontend/setup.sh` runs `npm install`
+
+`run.sh` starts both systems and stops both when you press `Ctrl+C`.
+
+Run only the backend:
 
 ```bash
 cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+./setup.sh
+./run.sh
 ```
 
 Run backend tests:
 
 ```bash
 cd backend
-pytest
+uv run pytest
 ```
 
-Run the backend:
-
-```bash
-cd backend
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-Install frontend dependencies:
+Run only the frontend:
 
 ```bash
 cd frontend
-npm install
+./setup.sh
+./run.sh
 ```
 
-Run the frontend app with Vite:
+Run frontend source checks:
 
 ```bash
 cd frontend
-npm run dev
+npm test
 ```
-
-## Docker
-
-After creating `.env`, start the stack:
-
-```bash
-docker compose up --build
-```
-
-The backend listens on `http://localhost:8000`. The frontend dev server listens on `http://localhost:8081`.
 
 ## Runtime Output
 
@@ -195,5 +206,7 @@ output/jobs/<job_id>/
 ├── logs.jsonl
 └── summary.json
 ```
+
+The summary includes `failed_images` when an image cannot be processed by the external Roboflow Workflow and `skipped_images` when a workflow response contains no detections. Those events are logged in `logs.jsonl` and `roboflow/raw_results.jsonl`; the rest of the batch continues and still exports a dataset for successful images.
 
 `output/`, `uploads/`, `.env`, and sample local image folders are ignored by git.

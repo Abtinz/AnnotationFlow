@@ -7,7 +7,8 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from app.main import app, get_workflow_client
+from app.config import Settings
+from app.main import app, get_settings, get_workflow_client
 
 
 class FakeWorkflowClient:
@@ -36,8 +37,8 @@ class FakeWorkflowClient:
 
 def test_create_job_processes_upload_and_returns_logs(tmp_path: Path, monkeypatch) -> None:
     """Uploading an image creates a processed job with readable logs."""
-    monkeypatch.setenv("OUTPUT_DIR", str(tmp_path / "output"))
-    monkeypatch.setenv("UPLOAD_DIR", str(tmp_path / "uploads"))
+    settings = Settings(output_dir=tmp_path / "output", upload_dir=tmp_path / "uploads")
+    app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[get_workflow_client] = lambda: FakeWorkflowClient()
     image_path = tmp_path / "bus.png"
     Image.new("RGB", (10, 10), "yellow").save(image_path)
