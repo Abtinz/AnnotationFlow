@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 import shutil
 import uuid
+import zipfile
 from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 
 from app.config import Settings, get_settings
 from app.jobs import ImageWorkflowClient, PipelineConfig, process_image_paths
@@ -124,3 +126,24 @@ def get_job_logs(job_id: str, settings: Settings = Depends(get_settings)) -> dic
     if not job_dir.exists():
         raise HTTPException(status_code=404, detail="Job not found")
     return {"job_id": job_id, "logs": _read_jsonl(job_dir / "logs.jsonl")}
+
+
+@app.get("/jobs/{job_id}/dataset")
+def download_job_dataset(job_id: str, settings: Settings = Depends(get_settings)) -> FileResponse:
+    """Return the generated YOLO dataset as a ZIP file."""
+    job_dir = settings.output_dir / "jobs" / job_id
+    dataset_dir = job_dir / "dataset"
+    if not dataset_dir.exists():
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    zip_path = job_dir / "dataset.zip"
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for path in sorted(dataset_dir.rglob("*")):
+            if path.is_file():
+                archive.write(path, arcname=Path("dataset") / path.relative_to(dataset_dir))
+
+    return FileResponse(
+        zip_path,
+        media_type="application/zip",
+        filename=f"{job_id}-dataset.zip",
+    )

@@ -1,5 +1,7 @@
 """Tests for FastAPI job endpoints."""
 
+import io
+import zipfile
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -60,6 +62,11 @@ def test_create_job_processes_upload_and_returns_logs(tmp_path: Path, monkeypatc
         logs_response = client.get(f"/jobs/{payload['job_id']}/logs")
         assert logs_response.status_code == 200
         assert any(log["message"] == "Job completed" for log in logs_response.json()["logs"])
+
+        dataset_response = client.get(f"/jobs/{payload['job_id']}/dataset")
+        assert dataset_response.status_code == 200
+        with zipfile.ZipFile(io.BytesIO(dataset_response.content)) as archive:
+            assert "dataset/data.yaml" in archive.namelist()
+            assert "dataset/train/labels/bus.txt" in archive.namelist()
     finally:
         app.dependency_overrides.clear()
-
