@@ -11,7 +11,7 @@ class Settings(BaseSettings):
 
     api_host: str = "0.0.0.0"
     api_port: int = 8000
-    backend_cors_origins: str = "http://localhost:8081,http://localhost:19006"
+    backend_cors_origins: str = "http://localhost:8081,http://127.0.0.1:8081"
     roboflow_api_url: str = "https://serverless.roboflow.com"
     roboflow_api_key: str = ""
     roboflow_workspace_name: str = ""
@@ -34,4 +34,3 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Return cached application settings."""
     return Settings()
-

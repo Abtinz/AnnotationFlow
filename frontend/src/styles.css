@@ -48,7 +48,7 @@ input {
   width: 14px;
   height: 14px;
   border: 1px solid #172016;
-  border-radius: 4px;
+  border-radius: 0;
   background: #c7ff6b;
 }
 
@@ -77,7 +77,7 @@ h1 {
 }
 
 .panel {
-  border-radius: 8px;
+  border-radius: 0;
   padding: 18px;
 }
 
@@ -106,7 +106,7 @@ h1 {
 }
 
 .pill {
-  border-radius: 999px;
+  border-radius: 0;
   background: #e1e7da;
   color: #172016;
   padding: 6px 10px;
@@ -133,7 +133,7 @@ h1 {
   align-items: center;
   justify-content: center;
   min-height: 44px;
-  border-radius: 8px;
+  border-radius: 0;
   cursor: pointer;
   font-weight: 900;
 }
@@ -185,7 +185,7 @@ h1 {
 
 .stat {
   border: 1px solid #40503b;
-  border-radius: 8px;
+  border-radius: 0;
   background: #263123;
   padding: 14px;
 }
@@ -226,7 +226,7 @@ h1 {
 .logs {
   min-height: 240px;
   margin-top: 16px;
-  border-radius: 8px;
+  border-radius: 0;
   background: #0e140d;
   padding: 18px;
 }
@@ -262,4 +262,3 @@ h1 {
     grid-template-columns: 1fr;
   }
 }
-

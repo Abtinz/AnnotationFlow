@@ -11,6 +11,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import Settings, get_settings
 from app.jobs import ImageWorkflowClient, PipelineConfig, process_image_paths
@@ -20,6 +21,15 @@ app = FastAPI(
     title="AnnotationFlow API",
     description="Automated YOLO object-detection dataset builder.",
     version="0.1.0",
+)
+
+settings = get_settings()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[origin.strip() for origin in settings.backend_cors_origins.split(",") if origin.strip()],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
