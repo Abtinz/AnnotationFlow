@@ -54,20 +54,20 @@ select {
 }
 
 h1 {
-  max-width: 720px;
   margin: 12px 0 8px;
   color: #172016;
-  font-size: clamp(34px, 5vw, 58px);
+  font-size: 52px;
   line-height: 0.95;
   letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .hero p {
-  max-width: 650px;
   margin: 0;
   color: #566052;
   font-size: 16px;
   line-height: 1.55;
+  white-space: nowrap;
 }
 
 .input-grid,
@@ -385,6 +385,15 @@ h1 {
   .shell {
     width: min(100vw - 24px, 1100px);
     padding: 20px 0;
+  }
+
+  h1 {
+    font-size: 34px;
+    white-space: normal;
+  }
+
+  .hero p {
+    white-space: normal;
   }
 
   .input-grid,
