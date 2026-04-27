@@ -5,13 +5,7 @@
 
 AnnotationFlow is a local software tool for building YOLO object-detection datasets from raw image folders. It normalizes image files, removes exact duplicates, runs images through a configurable Roboflow Workflow, converts detections into YOLO labels, splits the result into `train`/`valid`/`test`, and exports a ready-to-train dataset ZIP.
 
-<p>
-  <img src="https://app.roboflow.com/images/wordmark-purboflow.svg" alt="Roboflow" height="32" />
-  &nbsp;&nbsp;
-  <img src="https://cdn.prod.website-files.com/680a070c3b99253410dd3dcf/6914c5f6e5b3ebb12ce86156_updated-logo.svg" alt="Ultralytics" height="32" />
-</p>
-
-![AnnotationFlow demo](docs/demo.png)
+<img src="docs/demo.png?raw=1" alt="AnnotationFlow demo" />
 
 ## What It Does
 
@@ -30,7 +24,10 @@ raw images
 
 The application includes a FastAPI backend and a React/Vite frontend. Jobs run in the background, while the UI shows live command-style logs and a four-step progress roadmap.
 
-## Roboflow Workflow Integration
+<h2>
+  <img src="https://app.roboflow.com/images/wordmark-purboflow.svg" alt="Roboflow" height="28" style="vertical-align: middle; margin-right: 10px;" />
+  <span style="vertical-align: middle;">Roboflow Workflow Integration</span>
+</h2>
 
 AnnotationFlow uses Roboflow Workflows as the inference layer. This keeps dataset generation flexible: you can update the model, workflow graph, confidence behavior, and output structure in Roboflow while keeping the local export pipeline stable.
 
@@ -49,7 +46,10 @@ TEST_RATIO
 
 If a field is left empty in the UI, the backend falls back to `.env`. This allows repeatable default settings while still supporting one-off experiments from the browser.
 
-## YOLO Object-Detection Format
+<h2>
+  <img src="https://cdn.prod.website-files.com/680a070c3b99253410dd3dcf/6914c5f6e5b3ebb12ce86156_updated-logo.svg" alt="Ultralytics" height="28" style="vertical-align: middle; margin-right: 10px;" />
+  <span style="vertical-align: middle;">YOLO Object-Detection Format</span>
+</h2>
 
 For every processed image, AnnotationFlow writes a matching `.txt` label file. Each detection is exported as:
 
@@ -181,35 +181,6 @@ Run frontend checks:
 cd frontend
 npm test
 ```
-
-## API
-
-```text
-GET  /health
-POST /jobs
-GET  /jobs/{job_id}
-GET  /jobs/{job_id}/logs
-GET  /jobs/{job_id}/dataset
-```
-
-`POST /jobs` accepts multipart image uploads and an optional JSON `config` field. The endpoint returns immediately with a `job_id`; the frontend polls the job and log endpoints until processing completes.
-
-## Runtime Output
-
-Jobs write local runtime data under:
-
-```text
-output/jobs/<job_id>/
-├── originals/
-├── normalized/
-├── roboflow/
-│   └── raw_results.jsonl
-├── dataset/
-├── logs.jsonl
-└── summary.json
-```
-
-`output/`, `uploads/`, `.env`, and local sample image folders are ignored by git.
 
 ## Contributing
 
