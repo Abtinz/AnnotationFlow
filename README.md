@@ -1,6 +1,7 @@
 # AnnotationFlow
 
-**Version:** `0.1.0`
+![License: MIT](https://img.shields.io/badge/license-MIT-97d700?labelColor=555555&style=flat)
+![Release: v0.1.0](https://img.shields.io/badge/release-v0.1.0-ff7a2f?labelColor=555555&style=flat)
 
 AnnotationFlow is a local software tool for building YOLO object-detection datasets from raw image folders. It normalizes image files, removes exact duplicates, runs images through a configurable Roboflow Workflow, converts detections into YOLO labels, splits the result into `train`/`valid`/`test`, and exports a ready-to-train dataset ZIP.
 
