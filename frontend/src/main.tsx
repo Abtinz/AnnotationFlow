@@ -31,6 +31,7 @@ type RuntimeConfig = {
 };
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+const PIPELINE_STEPS = ["Upload", "Normalize", "Roboflow", "Export"];
 
 const DEFAULT_RUNTIME_CONFIG: RuntimeConfig = {
   ROBOFLOW_API_KEY: "",
@@ -52,36 +53,61 @@ function App() {
   const [logs, setLogs] = React.useState<LogLine[]>([]);
   const [error, setError] = React.useState<string | null>(null);
 
-  const canRun = files.length > 0 && status !== "uploading" && status !== "processing";
-  const datasetUrl = jobId ? `${API_BASE_URL}/jobs/${jobId}/dataset` : null;
+  const isRunning = status === "uploading" || status === "processing" || status === "running";
+  const canRun = files.length > 0 && !isRunning;
+  const datasetUrl = jobId && summary ? `${API_BASE_URL}/jobs/${jobId}/dataset` : null;
+  const activeStep = getActiveStep(status, logs);
 
   React.useEffect(() => {
     if (!jobId || status === "completed" || status === "failed") {
       return;
     }
 
-    const interval = window.setInterval(async () => {
+    let canceled = false;
+
+    async function pollJob() {
       try {
         const [jobResponse, logResponse] = await Promise.all([
           fetch(`${API_BASE_URL}/jobs/${jobId}`),
           fetch(`${API_BASE_URL}/jobs/${jobId}/logs`),
         ]);
+        if (canceled) {
+          return;
+        }
         if (jobResponse.ok) {
           const jobPayload = await jobResponse.json();
           setStatus(jobPayload.status);
-          setSummary(jobPayload.summary);
+          setSummary(Object.keys(jobPayload.summary ?? {}).length > 0 ? jobPayload.summary : null);
         }
         if (logResponse.ok) {
           const logPayload = await logResponse.json();
           setLogs(logPayload.logs ?? []);
         }
       } catch (pollError) {
+        if (canceled) {
+          return;
+        }
         setError(pollError instanceof Error ? pollError.message : "Could not poll job status");
       }
-    }, 1000);
+    }
 
-    return () => window.clearInterval(interval);
+    void pollJob();
+    const interval = window.setInterval(pollJob, 700);
+
+    return () => {
+      canceled = true;
+      window.clearInterval(interval);
+    };
   }, [jobId, status]);
+
+  function handleFilesChange(nextFiles: File[]) {
+    setFiles(nextFiles);
+    setJobId(null);
+    setStatus("idle");
+    setSummary(null);
+    setLogs([]);
+    setError(null);
+  }
 
   function updateRuntimeConfig(key: keyof RuntimeConfig, value: string) {
     setRuntimeConfig((current) => ({ ...current, [key]: value }));
@@ -96,14 +122,6 @@ function App() {
     }
   }
 
-  async function loadLogs(nextJobId: string) {
-    const logResponse = await fetch(`${API_BASE_URL}/jobs/${nextJobId}/logs`);
-    if (logResponse.ok) {
-      const logPayload = await logResponse.json();
-      setLogs(logPayload.logs ?? []);
-    }
-  }
-
   async function startJob() {
     if (!canRun) {
       return;
@@ -112,6 +130,7 @@ function App() {
     setError(null);
     setLogs([]);
     setSummary(null);
+    setJobId(null);
     setStatus("uploading");
 
     const formData = new FormData();
@@ -124,13 +143,13 @@ function App() {
         body: formData,
       });
       if (!response.ok) {
-        throw new Error(`Upload failed with ${response.status}`);
+        const errorPayload = await response.json().catch(() => ({}));
+        throw new Error(errorPayload.detail || `Upload failed with ${response.status}`);
       }
       const payload = await response.json();
       setJobId(payload.job_id);
       setStatus(payload.status);
-      setSummary(payload.summary);
-      await loadLogs(payload.job_id);
+      setSummary(Object.keys(payload.summary ?? {}).length > 0 ? payload.summary : null);
     } catch (uploadError) {
       setStatus("failed");
       setError(uploadError instanceof Error ? uploadError.message : "Upload failed");
@@ -162,7 +181,7 @@ function App() {
               type="file"
               accept="image/*,.heic,.heif"
               multiple
-              onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
+              onChange={(event) => handleFilesChange(Array.from(event.target.files ?? []))}
             />
             <span>Select Images</span>
           </label>
@@ -255,24 +274,30 @@ function App() {
 
       <section className="monitor-grid">
         <div className="panel dataset-panel">
-          <span className="panel-label">Dataset</span>
-          <div className="stats">
-            <Stat label="processed" value={summary?.processed_images ?? 0} />
-            <Stat label="duplicates" value={summary?.duplicate_images ?? 0} />
-            <Stat label="failed" value={summary?.failed_images ?? 0} />
-            <Stat label="skipped" value={summary?.skipped_images ?? 0} />
-            <Stat label="train" value={summary?.train_count ?? 0} />
-            <Stat label="valid" value={summary?.valid_count ?? 0} />
-          </div>
-          <p className="dataset-copy">
-            Classes: {(summary?.classes ?? []).join(", ") || "none yet"} · Test: {summary?.test_count ?? 0}
-          </p>
-          {datasetUrl ? (
-            <a className="dataset-link" href={datasetUrl}>
-              Download dataset zip
-            </a>
-          ) : null}
-          {error ? <p className="error">{error}</p> : null}
+          {isRunning ? (
+            <LoadingRoadmap activeStep={activeStep} />
+          ) : (
+            <>
+              <span className="panel-label">Dataset</span>
+              <div className="stats">
+                <Stat label="processed" value={summary?.processed_images ?? 0} />
+                <Stat label="duplicates" value={summary?.duplicate_images ?? 0} />
+                <Stat label="failed" value={summary?.failed_images ?? 0} />
+                <Stat label="skipped" value={summary?.skipped_images ?? 0} />
+                <Stat label="train" value={summary?.train_count ?? 0} />
+                <Stat label="valid" value={summary?.valid_count ?? 0} />
+              </div>
+              <p className="dataset-copy">
+                Classes: {(summary?.classes ?? []).join(", ") || "none yet"} · Test: {summary?.test_count ?? 0}
+              </p>
+              {datasetUrl ? (
+                <a className="dataset-link" href={datasetUrl}>
+                  Download dataset zip
+                </a>
+              ) : null}
+              {error ? <p className="error">{error}</p> : null}
+            </>
+          )}
         </div>
 
         <section className="logs">
@@ -289,6 +314,48 @@ function App() {
         </section>
       </section>
     </main>
+  );
+}
+
+function getActiveStep(status: string, logs: LogLine[]) {
+  if (status === "uploading") {
+    return 0;
+  }
+  if (logs.some((log) => log.message === "Job completed")) {
+    return 3;
+  }
+  if (
+    logs.some((log) =>
+      ["Wrote YOLO labels", "Skipped image with no detections", "Roboflow workflow failed"].includes(log.message),
+    )
+  ) {
+    return 3;
+  }
+  if (logs.some((log) => log.message === "Normalized image to JPG")) {
+    return 2;
+  }
+  if (logs.some((log) => log.message === "Job started")) {
+    return 1;
+  }
+  return 0;
+}
+
+function LoadingRoadmap({ activeStep }: { activeStep: number }) {
+  return (
+    <div className="loading-roadmap">
+      <span className="panel-label">Pipeline Running</span>
+      <div className="roadmap" aria-label="Pipeline progress">
+        {PIPELINE_STEPS.map((step, index) => {
+          const state = index < activeStep ? "done" : index === activeStep ? "active" : "pending";
+          return (
+            <div className={`roadmap-step ${state}`} key={step}>
+              <span className="roadmap-dot" />
+              <span className="roadmap-label">{step}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

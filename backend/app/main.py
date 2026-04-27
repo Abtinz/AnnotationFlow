@@ -9,7 +9,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -78,6 +78,13 @@ def _optional_float(overrides: dict[str, Any], key: str, fallback: float) -> flo
         raise HTTPException(status_code=400, detail=f"{key} must be a number") from error
 
 
+def _validate_ratio(name: str, value: float) -> float:
+    """Validate one split ratio value."""
+    if value < 0 or value > 1:
+        raise HTTPException(status_code=400, detail=f"{name} must be between 0 and 1")
+    return value
+
+
 def _optional_bool(overrides: dict[str, Any], key: str, fallback: bool) -> bool:
     """Return a boolean override or the configured fallback."""
     if key not in overrides:
@@ -123,10 +130,15 @@ def _roboflow_config(settings: Settings, overrides: dict[str, Any]) -> RoboflowW
 def _pipeline_config(settings: Settings, overrides: dict[str, Any] | None = None) -> PipelineConfig:
     """Build pipeline config from application settings."""
     overrides = overrides or {}
+    train_ratio = _validate_ratio("TRAIN_RATIO", _optional_float(overrides, "TRAIN_RATIO", settings.train_ratio))
+    val_ratio = _validate_ratio("VAL_RATIO", _optional_float(overrides, "VAL_RATIO", settings.val_ratio))
+    test_ratio = _validate_ratio("TEST_RATIO", _optional_float(overrides, "TEST_RATIO", settings.test_ratio))
+    if abs((train_ratio + val_ratio + test_ratio) - 1.0) > 1e-9:
+        raise HTTPException(status_code=400, detail="TRAIN_RATIO + VAL_RATIO + TEST_RATIO must equal 1.0")
     return PipelineConfig(
-        train_ratio=_optional_float(overrides, "TRAIN_RATIO", settings.train_ratio),
-        val_ratio=_optional_float(overrides, "VAL_RATIO", settings.val_ratio),
-        test_ratio=_optional_float(overrides, "TEST_RATIO", settings.test_ratio),
+        train_ratio=train_ratio,
+        val_ratio=val_ratio,
+        test_ratio=test_ratio,
         split_seed=settings.split_seed,
         include_empty_labels=settings.include_empty_labels,
     )
@@ -162,8 +174,46 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
+def _run_pipeline_job(
+    uploaded_paths: list[Path],
+    job_dir: Path,
+    workflow_client: ImageWorkflowClient,
+    pipeline_config: PipelineConfig,
+    runtime_config_summary: dict[str, Any],
+) -> None:
+    """Run a submitted job and persist final summary for polling clients."""
+    try:
+        summary = process_image_paths(
+            image_paths=uploaded_paths,
+            job_dir=job_dir,
+            roboflow_client=workflow_client,
+            config=pipeline_config,
+        )
+        summary["runtime_config"] = runtime_config_summary
+    except Exception as error:
+        summary = {
+            "status": "failed",
+            "error": str(error),
+            "input_images": len(uploaded_paths),
+            "processed_images": 0,
+            "duplicate_images": 0,
+            "failed_images": len(uploaded_paths),
+            "skipped_images": 0,
+            "classes": [],
+            "train_count": 0,
+            "valid_count": 0,
+            "test_count": 0,
+            "runtime_config": runtime_config_summary,
+        }
+        logs_path = job_dir / "logs.jsonl"
+        with logs_path.open("a", encoding="utf-8") as log_file:
+            log_file.write(json.dumps({"level": "error", "message": str(error)}, sort_keys=True) + "\n")
+    (job_dir / "summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8")
+
+
 @app.post("/jobs")
 async def create_job(
+    background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
     config: str | None = Form(None),
     settings: Settings = Depends(get_settings),
@@ -195,15 +245,15 @@ async def create_job(
             shutil.copyfileobj(upload.file, destination)
         uploaded_paths.append(upload_path)
 
-    summary = process_image_paths(
-        image_paths=uploaded_paths,
-        job_dir=job_dir,
-        roboflow_client=workflow_client,
-        config=pipeline_config,
+    background_tasks.add_task(
+        _run_pipeline_job,
+        uploaded_paths,
+        job_dir,
+        workflow_client,
+        pipeline_config,
+        _runtime_config_summary(roboflow_config, pipeline_config),
     )
-    summary["runtime_config"] = _runtime_config_summary(roboflow_config, pipeline_config)
-    (job_dir / "summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8")
-    return {"job_id": job_id, "status": "completed", "summary": summary}
+    return {"job_id": job_id, "status": "processing", "summary": {}}
 
 
 @app.get("/jobs/{job_id}")
@@ -213,7 +263,7 @@ def get_job(job_id: str, settings: Settings = Depends(get_settings)) -> dict[str
     if not job_dir.exists():
         raise HTTPException(status_code=404, detail="Job not found")
     summary = _read_json(job_dir / "summary.json")
-    status = "completed" if summary else "running"
+    status = str(summary.get("status", "completed")) if summary else "running"
     return {"job_id": job_id, "status": status, "summary": summary}
 
 
