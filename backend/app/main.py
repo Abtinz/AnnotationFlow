@@ -9,7 +9,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -55,15 +55,97 @@ def get_workflow_client(settings: Settings = Depends(get_settings)) -> ImageWork
     )
 
 
-def _pipeline_config(settings: Settings) -> PipelineConfig:
+def _decode_runtime_config(raw_config: str | None) -> dict[str, Any]:
+    """Decode optional JSON config submitted with a multipart job request."""
+    if not raw_config:
+        return {}
+    try:
+        payload = json.loads(raw_config)
+    except json.JSONDecodeError as error:
+        raise HTTPException(status_code=400, detail="config must be valid JSON") from error
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="config must be a JSON object")
+    return {str(key).upper(): value for key, value in payload.items() if value not in (None, "")}
+
+
+def _optional_float(overrides: dict[str, Any], key: str, fallback: float) -> float:
+    """Return a numeric override or the configured fallback."""
+    if key not in overrides:
+        return fallback
+    try:
+        return float(overrides[key])
+    except (TypeError, ValueError) as error:
+        raise HTTPException(status_code=400, detail=f"{key} must be a number") from error
+
+
+def _optional_bool(overrides: dict[str, Any], key: str, fallback: bool) -> bool:
+    """Return a boolean override or the configured fallback."""
+    if key not in overrides:
+        return fallback
+    value = overrides[key]
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "off"}:
+            return False
+    raise HTTPException(status_code=400, detail=f"{key} must be a boolean")
+
+
+def _optional_string(overrides: dict[str, Any], key: str, fallback: str) -> str:
+    """Return a string override or the configured fallback."""
+    if key not in overrides:
+        return fallback
+    return str(overrides[key])
+
+
+def _roboflow_config(settings: Settings, overrides: dict[str, Any]) -> RoboflowWorkflowConfig:
+    """Build effective Roboflow config from .env settings plus overrides."""
+    api_key = _optional_string(overrides, "ROBOFLOW_API_KEY", settings.roboflow_api_key)
+    if not api_key:
+        raise HTTPException(status_code=500, detail="ROBOFLOW_API_KEY is not configured")
+    return RoboflowWorkflowConfig(
+        api_url=settings.roboflow_api_url,
+        api_key=api_key,
+        workspace_name=_optional_string(
+            overrides,
+            "ROBOFLOW_WORKSPACE_NAME",
+            settings.roboflow_workspace_name,
+        ),
+        workflow_id=_optional_string(overrides, "ROBOFLOW_WORKFLOW_ID", settings.roboflow_workflow_id),
+        use_cache=_optional_bool(overrides, "ROBOFLOW_USE_CACHE", settings.roboflow_use_cache),
+        confidence=_optional_float(overrides, "ROBOFLOW_CONFIDENCE", settings.roboflow_confidence),
+    )
+
+
+def _pipeline_config(settings: Settings, overrides: dict[str, Any] | None = None) -> PipelineConfig:
     """Build pipeline config from application settings."""
+    overrides = overrides or {}
     return PipelineConfig(
-        train_ratio=settings.train_ratio,
-        val_ratio=settings.val_ratio,
-        test_ratio=settings.test_ratio,
+        train_ratio=_optional_float(overrides, "TRAIN_RATIO", settings.train_ratio),
+        val_ratio=_optional_float(overrides, "VAL_RATIO", settings.val_ratio),
+        test_ratio=_optional_float(overrides, "TEST_RATIO", settings.test_ratio),
         split_seed=settings.split_seed,
         include_empty_labels=settings.include_empty_labels,
     )
+
+
+def _runtime_config_summary(
+    roboflow_config: RoboflowWorkflowConfig,
+    pipeline_config: PipelineConfig,
+) -> dict[str, Any]:
+    """Return non-secret effective config details for job summaries."""
+    return {
+        "roboflow_workspace_name": roboflow_config.workspace_name,
+        "roboflow_workflow_id": roboflow_config.workflow_id,
+        "roboflow_use_cache": roboflow_config.use_cache,
+        "roboflow_confidence": roboflow_config.confidence,
+        "train_ratio": pipeline_config.train_ratio,
+        "val_ratio": pipeline_config.val_ratio,
+        "test_ratio": pipeline_config.test_ratio,
+    }
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -83,8 +165,8 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 @app.post("/jobs")
 async def create_job(
     files: list[UploadFile] = File(...),
+    config: str | None = Form(None),
     settings: Settings = Depends(get_settings),
-    workflow_client: ImageWorkflowClient = Depends(get_workflow_client),
 ) -> dict[str, Any]:
     """Create a processing job from uploaded images.
 
@@ -94,6 +176,10 @@ async def create_job(
     """
     if not files:
         raise HTTPException(status_code=400, detail="At least one image file is required")
+    runtime_overrides = _decode_runtime_config(config)
+    roboflow_config = _roboflow_config(settings, runtime_overrides)
+    pipeline_config = _pipeline_config(settings, runtime_overrides)
+    workflow_client = RoboflowWorkflowClient(roboflow_config)
 
     job_id = uuid.uuid4().hex
     upload_dir = settings.upload_dir / "jobs" / job_id
@@ -113,8 +199,10 @@ async def create_job(
         image_paths=uploaded_paths,
         job_dir=job_dir,
         roboflow_client=workflow_client,
-        config=_pipeline_config(settings),
+        config=pipeline_config,
     )
+    summary["runtime_config"] = _runtime_config_summary(roboflow_config, pipeline_config)
+    (job_dir / "summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8")
     return {"job_id": job_id, "status": "completed", "summary": summary}
 
 

@@ -4,11 +4,12 @@ import io
 import zipfile
 from pathlib import Path
 
+import app.main as main_module
 from fastapi.testclient import TestClient
 from PIL import Image
 
 from app.config import Settings
-from app.main import app, get_settings, get_workflow_client
+from app.main import app, get_settings
 
 
 class FakeWorkflowClient:
@@ -35,11 +36,82 @@ class FakeWorkflowClient:
         ]
 
 
+class CapturingWorkflowClient(FakeWorkflowClient):
+    """Fake workflow client that exposes the effective Roboflow config."""
+
+    def __init__(self, config: object) -> None:
+        self.config = config
+
+
+def test_create_job_accepts_optional_runtime_config(tmp_path: Path, monkeypatch) -> None:
+    """Runtime form config overrides settings for one job."""
+    settings = Settings(
+        output_dir=tmp_path / "output",
+        upload_dir=tmp_path / "uploads",
+        roboflow_api_key="env-key",
+        roboflow_workspace_name="env-workspace",
+        roboflow_workflow_id="env-workflow",
+        roboflow_use_cache=True,
+        roboflow_confidence=0.4,
+        train_ratio=0.8,
+        val_ratio=0.1,
+        test_ratio=0.1,
+    )
+    app.dependency_overrides[get_settings] = lambda: settings
+    captured_configs = []
+
+    def fake_roboflow_client(config: object) -> CapturingWorkflowClient:
+        captured_configs.append(config)
+        return CapturingWorkflowClient(config)
+
+    monkeypatch.setattr(main_module, "RoboflowWorkflowClient", fake_roboflow_client)
+    image_path = tmp_path / "bus.png"
+    Image.new("RGB", (10, 10), "yellow").save(image_path)
+
+    try:
+        client = TestClient(app)
+        with image_path.open("rb") as image_file:
+            response = client.post(
+                "/jobs",
+                data={
+                    "config": (
+                        '{"ROBOFLOW_API_KEY":"runtime-key",'
+                        '"ROBOFLOW_WORKSPACE_NAME":"runtime-workspace",'
+                        '"ROBOFLOW_WORKFLOW_ID":"runtime-workflow",'
+                        '"ROBOFLOW_USE_CACHE":false,'
+                        '"ROBOFLOW_CONFIDENCE":0.73,'
+                        '"TRAIN_RATIO":1,'
+                        '"VAL_RATIO":0,'
+                        '"TEST_RATIO":0}'
+                    )
+                },
+                files=[("files", ("bus.png", image_file, "image/png"))],
+            )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["summary"]["train_count"] == 1
+        assert payload["summary"]["valid_count"] == 0
+        assert payload["summary"]["test_count"] == 0
+        assert payload["summary"]["runtime_config"]["roboflow_workspace_name"] == "runtime-workspace"
+        assert payload["summary"]["runtime_config"]["roboflow_workflow_id"] == "runtime-workflow"
+        assert payload["summary"]["runtime_config"]["roboflow_use_cache"] is False
+        assert payload["summary"]["runtime_config"]["roboflow_confidence"] == 0.73
+        assert "roboflow_api_key" not in payload["summary"]["runtime_config"]
+        assert captured_configs[0].api_key == "runtime-key"
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_create_job_processes_upload_and_returns_logs(tmp_path: Path, monkeypatch) -> None:
     """Uploading an image creates a processed job with readable logs."""
-    settings = Settings(output_dir=tmp_path / "output", upload_dir=tmp_path / "uploads")
+    settings = Settings(
+        output_dir=tmp_path / "output",
+        upload_dir=tmp_path / "uploads",
+        roboflow_api_key="env-key",
+    )
     app.dependency_overrides[get_settings] = lambda: settings
-    app.dependency_overrides[get_workflow_client] = lambda: FakeWorkflowClient()
+    monkeypatch.setattr(main_module, "RoboflowWorkflowClient", lambda config: FakeWorkflowClient())
     image_path = tmp_path / "bus.png"
     Image.new("RGB", (10, 10), "yellow").save(image_path)
 

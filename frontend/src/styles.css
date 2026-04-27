@@ -18,7 +18,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -69,11 +70,19 @@ h1 {
   line-height: 1.55;
 }
 
-.grid {
+.input-grid,
+.monitor-grid {
   display: grid;
-  grid-template-columns: minmax(280px, 0.95fr) minmax(280px, 1.05fr);
   gap: 16px;
   margin-top: 22px;
+}
+
+.input-grid {
+  grid-template-columns: minmax(280px, 0.95fr) minmax(320px, 1.05fr);
+}
+
+.monitor-grid {
+  grid-template-columns: minmax(280px, 0.95fr) minmax(320px, 1.05fr);
 }
 
 .panel {
@@ -81,7 +90,8 @@ h1 {
   padding: 18px;
 }
 
-.input-panel {
+.input-panel,
+.config-panel {
   border: 1px solid #cfd5c9;
   background: #fbfbf7;
 }
@@ -176,6 +186,52 @@ h1 {
   white-space: nowrap;
 }
 
+.form-grid {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.field span {
+  color: #53604f;
+  font-size: 11px;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.field input,
+.field select {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid #c8d0c1;
+  border-radius: 0;
+  background: #f4f6f0;
+  color: #172016;
+  padding: 8px 10px;
+}
+
+.field input:focus,
+.field select:focus {
+  border-color: #172016;
+  outline: 2px solid #c7ff6b;
+  outline-offset: 0;
+}
+
+.field input::placeholder {
+  color: #8b9487;
+}
+
+.ratio-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -225,7 +281,6 @@ h1 {
 
 .logs {
   min-height: 240px;
-  margin-top: 16px;
   border-radius: 0;
   background: #0e140d;
   padding: 18px;
@@ -258,7 +313,12 @@ h1 {
     padding: 20px 0;
   }
 
-  .grid {
+  .input-grid,
+  .monitor-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ratio-row {
     grid-template-columns: 1fr;
   }
 }
