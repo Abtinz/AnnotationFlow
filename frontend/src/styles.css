@@ -354,10 +354,20 @@ h1 {
 }
 
 .logs {
+  max-height: 420px;
   min-height: 240px;
+  overflow-y: auto;
   border-radius: 0;
   background: #0e140d;
   padding: 18px;
+}
+
+.logs .panel-top {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #0e140d;
+  padding-bottom: 10px;
 }
 
 .log-title {
