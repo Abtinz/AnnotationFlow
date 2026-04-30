@@ -65,6 +65,15 @@ def _first_result(workflow_result: Any) -> dict[str, Any]:
     return workflow_result if isinstance(workflow_result, dict) else {}
 
 
+def _compact_workflow_result(workflow_result: Any) -> Any:
+    """Drop bulky visualization payloads before writing raw workflow logs."""
+    if isinstance(workflow_result, list):
+        return [_compact_workflow_result(item) for item in workflow_result]
+    if isinstance(workflow_result, dict):
+        return {key: value for key, value in workflow_result.items() if key != "visualization"}
+    return workflow_result
+
+
 def _detections_from_result(result: dict[str, Any]) -> tuple[dict[str, int], list[dict[str, Any]]]:
     """Extract image metadata and prediction rows from a Roboflow result."""
     detections = result.get("detections") or result.get("predictions") or {}
@@ -165,7 +174,7 @@ def process_image_paths(
                 error=str(error),
             )
             continue
-        _append_jsonl(raw_results_path, {"image": normalized_path.name, "result": workflow_result})
+        _append_jsonl(raw_results_path, {"image": normalized_path.name, "result": _compact_workflow_result(workflow_result)})
 
         result = _first_result(workflow_result)
         if result.get("upload_error_status"):

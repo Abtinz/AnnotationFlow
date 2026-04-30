@@ -9,4 +9,4 @@ if [ -f ../.env ]; then
   set +a
 fi
 
-uv run uvicorn app.main:app --reload --reload-dir app --host 127.0.0.1 --port 8000
+.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
